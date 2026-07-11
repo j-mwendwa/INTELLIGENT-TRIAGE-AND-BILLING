@@ -1,0 +1,87 @@
+repos:
+  # ── Ruff: lint + format (replaces flake8, isort, pyupgrade, black) ──────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.13
+    hooks:
+      - id: ruff                    # lint: E, F, I, UP, B, SIM (matches pyproject.toml)
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format             # format (black-compatible)
+
+  # ── Mypy: static type checking ───────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.16.0
+    hooks:
+      - id: mypy
+        files: ^AI/INTELLIGENT TRIAGE & BILLING/TRIAGE/src/
+        additional_dependencies:
+          - pydantic>=2.7.0
+          - pydantic-settings>=2.4.0
+          - types-PyYAML>=6.0.0
+          - types-aiofiles>=23.0.0
+
+  # ── File hygiene ─────────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml              # validate YAML syntax (configs/config.yaml)
+      - id: check-toml              # validate pyproject.toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1000]        # block accidental model weights / large data files
+      - id: check-case-conflict
+      - id: debug-statements        # catch stray breakpoint() / pdb.set_trace()
+      - id: detect-private-key      # catch accidentally committed private keys
+
+  # ── Secret scanning ──────────────────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.27.2
+    hooks:
+      - id: gitleaks
+
+  # ── YAML formatting ──────────────────────────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args:
+          - --config-data
+          - |
+            extends: default
+            rules:
+              line-length:
+                max: 120
+              truthy:
+                allowed-values: ["true", "false"]
+              comments:
+                min-spaces-from-content: 1
+
+# ── Global settings ───────────────────────────────────────────────────────────
+default_language_version:
+  python: python3.13
+
+# Scope all hooks to this project only.
+# The git root is /home/jmwenda; without this, hooks run on every file in the
+# home directory (sibling projects, venvs, site-packages, etc.).
+files: ^AI/INTELLIGENT TRIAGE & BILLING/TRIAGE/
+
+# Never touch virtualenvs, caches, or compiled bytecode regardless of location.
+exclude: |
+  (?x)^(
+    .*/venv/.*|
+    .*/.venv/.*|
+    .*/node_modules/.*|
+    .*/__pycache__/.*|
+    .*\.pyc$|
+    .*\.pyo$|
+    .*/\.cache/.*|
+    .*/site-packages/.*|
+    .*\.egg-info/.*
+  )$
+
+ci:
+  autofix_commit_msg: "style: auto-fix pre-commit hooks"
+  autoupdate_commit_msg: "chore: bump pre-commit hook versions"
+  autoupdate_schedule: weekly

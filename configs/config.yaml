@@ -1,0 +1,86 @@
+# ═══════════════════════════════════════════════════════════════
+# configs/config.yaml  —  Runtime tuning (no secrets)
+# ═══════════════════════════════════════════════════════════════
+
+# ── LLM ────────────────────────────────────────────────────────
+llm:
+  default_model: gemini-2.5-flash        # supervisor + general
+  billing_model: gemini-2.5-flash        # billing subgraph
+  technical_model: gemini-2.5-flash      # technical subgraph
+  compliance_model: gemini-2.5-flash     # compliance subgraph
+  temperature: 0.0
+  max_tokens: 4096
+
+# ── Context ────────────────────────────────────────────────────
+context:
+  target_context_tokens: 8000
+
+# ── Retrieval ──────────────────────────────────────────────────
+retrieval:
+  top_k: 5
+  similarity_cutoff: 0.7
+  billing_collection: billing_kb
+  technical_collection: technical_kb
+  compliance_collection: compliance_kb
+
+# ── Graph ──────────────────────────────────────────────────────
+graph:
+  max_iterations: 8
+  human_in_the_loop: false
+
+# ── Prompts ────────────────────────────────────────────────────
+prompts:
+  version: v1
+  hot_reload: false
+
+# ── MCP ────────────────────────────────────────────────────────
+mcp:
+  enabled: true
+  servers:
+    fetch:
+      transport: stdio
+      command: uvx
+      args: ["mcp-server-fetch"]
+      enabled: true
+    filesystem:
+      transport: stdio
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "data"]
+      enabled: true
+    # tavily:
+    #   transport: http
+    #   url: "https://mcp.tavily.com/mcp/"
+    #   enabled: false
+    # postgres:
+    #   transport: stdio
+    #   command: postgres-mcp
+    #   args: ["--access-mode=restricted"]
+    #   enabled: false
+
+# ── Ingestion ──────────────────────────────────────────────────
+ingestion:
+  chunk_size: 512
+  chunk_overlap: 64
+  use_title_extractor: false     # enable only if LLM quota is abundant
+
+# ── Security ───────────────────────────────────────────────────
+security:
+  rate_limit: "30/minute"
+  max_input_length: 4000
+  max_output_length: 16000
+  blocked_phrases:
+    - "ignore previous instructions"
+    - "disregard all prior"
+    - "system prompt leak"
+    - "jailbreak"
+
+# ── Supervisor routing thresholds ─────────────────────────────
+supervisor:
+  confidence_threshold: 0.6
+  escalate_to_human_keywords:
+    - "urgent"
+    - "emergency"
+    - "critical"
+    - "legal action"
+    - "lawsuit"
+    - "refund dispute"
