@@ -12,7 +12,7 @@ license = { text = "MIT" }
 
 dependencies = [
     # API
-    "fastapi>=0.115.0",
+    "fastapi>=0.115.6",
     "uvicorn[standard]>=0.30.0",
     "python-multipart>=0.0.9",
     "slowapi>=0.1.9",

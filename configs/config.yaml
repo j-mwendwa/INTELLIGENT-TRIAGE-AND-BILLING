@@ -37,16 +37,16 @@ prompts:
 mcp:
   enabled: true
   servers:
-    fetch:
-      transport: stdio
-      command: uvx
-      args: ["mcp-server-fetch"]
-      enabled: true
-    filesystem:
-      transport: stdio
-      command: npx
-      args: ["-y", "@modelcontextprotocol/server-filesystem", "data"]
-      enabled: true
+    # fetch:
+    #   transport: stdio
+    #   command: uvx
+    #   args: ["mcp-server-fetch"]
+    #   enabled: true
+    # filesystem:
+    #   transport: stdio
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "data"]
+    #   enabled: true
     # tavily:
     #   transport: http
     #   url: "https://mcp.tavily.com/mcp/"
