@@ -1,0 +1,83 @@
+name: CD → Azure Container Apps
+
+on:
+  push:
+    branches: [main]
+
+env:
+  ACR_NAME: triageregistry2026
+  IMAGE: triageregistry2026.azurecr.io/triage-api
+  ACA_APP: triage-api-app
+  ACA_RG: triage-rg
+
+jobs:
+  # ── 1. Test ──────────────────────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run unit tests
+        run: pytest tests/unit -v
+
+  # ── 2. Build & Deploy ────────────────────────────────────────────────────────
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Buildx enables layer caching — avoids re-downloading the baked HuggingFace
+      # model (~250 MB) on every push by pulling the previous image as cache.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Log in to ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          # Tag with git SHA for traceability + rollback; also update :latest
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.IMAGE }}:latest
+          cache-to: type=inline
+
+      # Fix: correct action name is container-apps-deploy-action (hyphenated)
+      - name: Deploy to Azure Container Apps
+        uses: azure/container-apps-deploy-action@v2
+        with:
+          acrName: ${{ env.ACR_NAME }}
+          containerAppName: ${{ env.ACA_APP }}
+          resourceGroup: ${{ env.ACA_RG }}
+          imageToDeploy: ${{ env.IMAGE }}:${{ github.sha }}
+          targetPort: 8000
+          ingress: external
+          # All secrets are stored in ACA secret store and referenced here.
+          # Set them with: az containerapp secret set --name triage-api-app ...
+          environmentVariables: >-
+            APP_ENV=production
+            VECTOR_BACKEND=qdrant
+            QDRANT_URL=secretref:qdrant-url
+            QDRANT_API_KEY=secretref:qdrant-api-key
+            GOOGLE_API_KEY=secretref:gemini-key
+            ALLOWED_API_KEYS=secretref:allowed-api-keys
+            LANGSMITH_API_KEY=secretref:langsmith-api-key
+            LANGSMITH_PROJECT=MJM
+            MCP_ENABLED=true
