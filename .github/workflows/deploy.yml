@@ -57,13 +57,50 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE }}:latest
           cache-to: type=inline
 
+      # Pre-flight: fail fast with a clear message if any required secret is unset.
+      # GitHub expands unset secrets to empty strings — ACA then rejects them with
+      # a cryptic "value should be provided" error. This catches it early.
+      - name: Validate required secrets
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          ALLOWED_API_KEYS: ${{ secrets.ALLOWED_API_KEYS }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+        run: |
+          MISSING=()
+          [ -z "$GOOGLE_API_KEY"   ] && MISSING+=("GOOGLE_API_KEY")
+          [ -z "$QDRANT_URL"       ] && MISSING+=("QDRANT_URL")
+          [ -z "$QDRANT_API_KEY"   ] && MISSING+=("QDRANT_API_KEY")
+          [ -z "$ALLOWED_API_KEYS" ] && MISSING+=("ALLOWED_API_KEYS")
+          [ -z "$LANGSMITH_API_KEY"] && MISSING+=("LANGSMITH_API_KEY")
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "❌ Missing GitHub Actions secrets: ${MISSING[*]}"
+            echo "   Go to: Settings → Secrets → Actions → New repository secret"
+            exit 1
+          fi
+          echo "✅ All required secrets are present."
+
       # Deploy using az CLI directly — avoids the action's --replace-env-vars bug.
       # Branches on whether the app already exists:
-      #   First run  → az containerapp create  (defines secrets + env vars together)
-      #   Subsequent → az containerapp secret set + update (only bumps the image)
+      #   First run  → az containerapp create  (defines secrets + env-vars together)
+      #   Subsequent → az containerapp secret set + update (bumps image + secrets)
       - name: Deploy to Azure Container Apps
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          ALLOWED_API_KEYS: ${{ secrets.ALLOWED_API_KEYS }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
         run: |
           FULL_IMAGE="${{ env.IMAGE }}:${{ github.sha }}"
+
+          # Build the secrets string once — ACA expects "name=value" space-separated.
+          # Using env vars (not inline ${{ secrets.X }}) keeps values out of the logs.
+          SECRETS_ARGS="gemini-key=$GOOGLE_API_KEY qdrant-url=$QDRANT_URL qdrant-api-key=$QDRANT_API_KEY allowed-api-keys=$ALLOWED_API_KEYS langsmith-api-key=$LANGSMITH_API_KEY"
+
+          ENV_VARS="APP_ENV=production VECTOR_BACKEND=qdrant QDRANT_URL=secretref:qdrant-url QDRANT_API_KEY=secretref:qdrant-api-key GOOGLE_API_KEY=secretref:gemini-key ALLOWED_API_KEYS=secretref:allowed-api-keys LANGSMITH_API_KEY=secretref:langsmith-api-key LANGSMITH_PROJECT=MJM MCP_ENABLED=true"
 
           if az containerapp show \
                --name ${{ env.ACA_APP }} \
@@ -75,27 +112,13 @@ jobs:
             az containerapp secret set \
               --name ${{ env.ACA_APP }} \
               --resource-group ${{ env.ACA_RG }} \
-              --secrets \
-                gemini-key="${{ secrets.GOOGLE_API_KEY }}" \
-                qdrant-url="${{ secrets.QDRANT_URL }}" \
-                qdrant-api-key="${{ secrets.QDRANT_API_KEY }}" \
-                allowed-api-keys="${{ secrets.ALLOWED_API_KEYS }}" \
-                langsmith-api-key="${{ secrets.LANGSMITH_API_KEY }}"
+              --secrets $SECRETS_ARGS
 
             az containerapp update \
               --name ${{ env.ACA_APP }} \
               --resource-group ${{ env.ACA_RG }} \
               --image "$FULL_IMAGE" \
-              --set-env-vars \
-                APP_ENV=production \
-                VECTOR_BACKEND=qdrant \
-                QDRANT_URL=secretref:qdrant-url \
-                QDRANT_API_KEY=secretref:qdrant-api-key \
-                GOOGLE_API_KEY=secretref:gemini-key \
-                ALLOWED_API_KEYS=secretref:allowed-api-keys \
-                LANGSMITH_API_KEY=secretref:langsmith-api-key \
-                LANGSMITH_PROJECT=MJM \
-                MCP_ENABLED=true
+              --set-env-vars $ENV_VARS
 
           else
 
@@ -110,22 +133,8 @@ jobs:
               --target-port 8000 \
               --min-replicas 1 \
               --max-replicas 3 \
-              --secrets \
-                gemini-key="${{ secrets.GOOGLE_API_KEY }}" \
-                qdrant-url="${{ secrets.QDRANT_URL }}" \
-                qdrant-api-key="${{ secrets.QDRANT_API_KEY }}" \
-                allowed-api-keys="${{ secrets.ALLOWED_API_KEYS }}" \
-                langsmith-api-key="${{ secrets.LANGSMITH_API_KEY }}" \
-              --env-vars \
-                APP_ENV=production \
-                VECTOR_BACKEND=qdrant \
-                QDRANT_URL=secretref:qdrant-url \
-                QDRANT_API_KEY=secretref:qdrant-api-key \
-                GOOGLE_API_KEY=secretref:gemini-key \
-                ALLOWED_API_KEYS=secretref:allowed-api-keys \
-                LANGSMITH_API_KEY=secretref:langsmith-api-key \
-                LANGSMITH_PROJECT=MJM \
-                MCP_ENABLED=true
+              --secrets $SECRETS_ARGS \
+              --env-vars $ENV_VARS
 
           fi
 
