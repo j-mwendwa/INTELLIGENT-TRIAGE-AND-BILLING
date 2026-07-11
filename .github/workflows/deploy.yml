@@ -8,6 +8,7 @@ env:
   ACR_NAME: triageregistry2026
   IMAGE: triageregistry2026.azurecr.io/triage-api
   ACA_APP: triage-api-app
+  ACA_ENV: triage-env
   ACA_RG: triage-rg
 
 jobs:
@@ -35,8 +36,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Buildx enables layer caching — avoids re-downloading the baked HuggingFace
-      # model (~250 MB) on every push by pulling the previous image as cache.
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to Azure
@@ -52,32 +51,82 @@ jobs:
         with:
           context: .
           push: true
-          # Tag with git SHA for traceability + rollback; also update :latest
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:latest
           cache-from: type=registry,ref=${{ env.IMAGE }}:latest
           cache-to: type=inline
 
-      # Fix: correct action name is container-apps-deploy-action (hyphenated)
+      # Deploy using az CLI directly — avoids the action's --replace-env-vars bug.
+      # Branches on whether the app already exists:
+      #   First run  → az containerapp create  (defines secrets + env vars together)
+      #   Subsequent → az containerapp secret set + update (only bumps the image)
       - name: Deploy to Azure Container Apps
-        uses: azure/container-apps-deploy-action@v2
-        with:
-          acrName: ${{ env.ACR_NAME }}
-          containerAppName: ${{ env.ACA_APP }}
-          resourceGroup: ${{ env.ACA_RG }}
-          imageToDeploy: ${{ env.IMAGE }}:${{ github.sha }}
-          targetPort: 8000
-          ingress: external
-          # All secrets are stored in ACA secret store and referenced here.
-          # Set them with: az containerapp secret set --name triage-api-app ...
-          environmentVariables: >-
-            APP_ENV=production
-            VECTOR_BACKEND=qdrant
-            QDRANT_URL=secretref:qdrant-url
-            QDRANT_API_KEY=secretref:qdrant-api-key
-            GOOGLE_API_KEY=secretref:gemini-key
-            ALLOWED_API_KEYS=secretref:allowed-api-keys
-            LANGSMITH_API_KEY=secretref:langsmith-api-key
-            LANGSMITH_PROJECT=MJM
-            MCP_ENABLED=true
+        run: |
+          FULL_IMAGE="${{ env.IMAGE }}:${{ github.sha }}"
+
+          if az containerapp show \
+               --name ${{ env.ACA_APP }} \
+               --resource-group ${{ env.ACA_RG }} \
+               --output none 2>/dev/null; then
+
+            echo "ℹ️  Container App exists — updating secrets and image..."
+
+            az containerapp secret set \
+              --name ${{ env.ACA_APP }} \
+              --resource-group ${{ env.ACA_RG }} \
+              --secrets \
+                gemini-key="${{ secrets.GOOGLE_API_KEY }}" \
+                qdrant-url="${{ secrets.QDRANT_URL }}" \
+                qdrant-api-key="${{ secrets.QDRANT_API_KEY }}" \
+                allowed-api-keys="${{ secrets.ALLOWED_API_KEYS }}" \
+                langsmith-api-key="${{ secrets.LANGSMITH_API_KEY }}"
+
+            az containerapp update \
+              --name ${{ env.ACA_APP }} \
+              --resource-group ${{ env.ACA_RG }} \
+              --image "$FULL_IMAGE" \
+              --set-env-vars \
+                APP_ENV=production \
+                VECTOR_BACKEND=qdrant \
+                QDRANT_URL=secretref:qdrant-url \
+                QDRANT_API_KEY=secretref:qdrant-api-key \
+                GOOGLE_API_KEY=secretref:gemini-key \
+                ALLOWED_API_KEYS=secretref:allowed-api-keys \
+                LANGSMITH_API_KEY=secretref:langsmith-api-key \
+                LANGSMITH_PROJECT=MJM \
+                MCP_ENABLED=true
+
+          else
+
+            echo "🆕  Container App not found — creating from scratch..."
+
+            az containerapp create \
+              --name ${{ env.ACA_APP }} \
+              --resource-group ${{ env.ACA_RG }} \
+              --environment ${{ env.ACA_ENV }} \
+              --image "$FULL_IMAGE" \
+              --ingress external \
+              --target-port 8000 \
+              --min-replicas 1 \
+              --max-replicas 3 \
+              --secrets \
+                gemini-key="${{ secrets.GOOGLE_API_KEY }}" \
+                qdrant-url="${{ secrets.QDRANT_URL }}" \
+                qdrant-api-key="${{ secrets.QDRANT_API_KEY }}" \
+                allowed-api-keys="${{ secrets.ALLOWED_API_KEYS }}" \
+                langsmith-api-key="${{ secrets.LANGSMITH_API_KEY }}" \
+              --env-vars \
+                APP_ENV=production \
+                VECTOR_BACKEND=qdrant \
+                QDRANT_URL=secretref:qdrant-url \
+                QDRANT_API_KEY=secretref:qdrant-api-key \
+                GOOGLE_API_KEY=secretref:gemini-key \
+                ALLOWED_API_KEYS=secretref:allowed-api-keys \
+                LANGSMITH_API_KEY=secretref:langsmith-api-key \
+                LANGSMITH_PROJECT=MJM \
+                MCP_ENABLED=true
+
+          fi
+
+          echo "✅ Deployed: $FULL_IMAGE"
