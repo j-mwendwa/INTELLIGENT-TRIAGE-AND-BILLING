@@ -83,9 +83,10 @@ jobs:
           echo "✅ All required secrets are present."
 
       # Deploy using az CLI directly — avoids the action's --replace-env-vars bug.
+      # Also handles ACR registry credentials (admin account) for image pulls.
       # Branches on whether the app already exists:
-      #   First run  → az containerapp create  (defines secrets + env-vars together)
-      #   Subsequent → az containerapp secret set + update (bumps image + secrets)
+      #   First run  → az containerapp create  (defines secrets + env-vars + registry)
+      #   Subsequent → az containerapp secret set + registry set + update
       - name: Deploy to Azure Container Apps
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -97,22 +98,32 @@ jobs:
           FULL_IMAGE="${{ env.IMAGE }}:${{ github.sha }}"
 
           # Build the secrets string once — ACA expects "name=value" space-separated.
-          # Using env vars (not inline ${{ secrets.X }}) keeps values out of the logs.
           SECRETS_ARGS="gemini-key=$GOOGLE_API_KEY qdrant-url=$QDRANT_URL qdrant-api-key=$QDRANT_API_KEY allowed-api-keys=$ALLOWED_API_KEYS langsmith-api-key=$LANGSMITH_API_KEY"
 
           ENV_VARS="APP_ENV=production VECTOR_BACKEND=qdrant QDRANT_URL=secretref:qdrant-url QDRANT_API_KEY=secretref:qdrant-api-key GOOGLE_API_KEY=secretref:gemini-key ALLOWED_API_KEYS=secretref:allowed-api-keys LANGSMITH_API_KEY=secretref:langsmith-api-key LANGSMITH_PROJECT=MJM MCP_ENABLED=true"
+
+          # Fetch ACR admin credentials for registry authentication
+          ACR_USER=${{ env.ACR_NAME }}
+          ACR_PASS=$(az acr credential show --name ${{ env.ACR_NAME }} --resource-group ${{ env.ACA_RG }} --query "passwords[0].value" -o tsv)
 
           if az containerapp show \
                --name ${{ env.ACA_APP }} \
                --resource-group ${{ env.ACA_RG }} \
                --output none 2>/dev/null; then
 
-            echo "ℹ️  Container App exists — updating secrets and image..."
+            echo "ℹ️  Container App exists — updating secrets, registry, and image..."
 
             az containerapp secret set \
               --name ${{ env.ACA_APP }} \
               --resource-group ${{ env.ACA_RG }} \
               --secrets $SECRETS_ARGS
+
+            az containerapp registry set \
+              --name ${{ env.ACA_APP }} \
+              --resource-group ${{ env.ACA_RG }} \
+              --server ${{ env.IMAGE }} \
+              --username "$ACR_USER" \
+              --password "$ACR_PASS"
 
             az containerapp update \
               --name ${{ env.ACA_APP }} \
@@ -129,6 +140,9 @@ jobs:
               --resource-group ${{ env.ACA_RG }} \
               --environment ${{ env.ACA_ENV }} \
               --image "$FULL_IMAGE" \
+              --registry-server ${{ env.IMAGE }} \
+              --registry-username "$ACR_USER" \
+              --registry-password "$ACR_PASS" \
               --ingress external \
               --target-port 8000 \
               --min-replicas 1 \
