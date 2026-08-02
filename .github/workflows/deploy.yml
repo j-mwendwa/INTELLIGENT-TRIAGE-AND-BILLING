@@ -100,9 +100,10 @@ jobs:
           # Build the secrets string once — ACA expects "name=value" space-separated.
           SECRETS_ARGS="gemini-key=$GOOGLE_API_KEY qdrant-url=$QDRANT_URL qdrant-api-key=$QDRANT_API_KEY allowed-api-keys=$ALLOWED_API_KEYS langsmith-api-key=$LANGSMITH_API_KEY"
 
-          ENV_VARS="APP_ENV=production VECTOR_BACKEND=qdrant QDRANT_URL=secretref:qdrant-url QDRANT_API_KEY=secretref:qdrant-api-key GOOGLE_API_KEY=secretref:gemini-key ALLOWED_API_KEYS=secretref:allowed-api-keys LANGSMITH_API_KEY=secretref:langsmith-api-key LANGSMITH_PROJECT=MJM MCP_ENABLED=true"
+          ENV_VARS="APP_ENV=production VECTOR_BACKEND=qdrant QDRANT_URL=secretref:qdrant-url QDRANT_API_KEY=secretref:qdrant-api-key GOOGLE_API_KEY=secretref:gemini-key ALLOWED_API_KEYS=secretref:allowed-api-keys LANGSMITH_API_KEY=secretref:langsmith-api-key LANGSMITH_PROJECT=MJM MCP_ENABLED=false"
 
           # Fetch ACR admin credentials for registry authentication
+          ACR_SERVER="${{ env.ACR_NAME }}.azurecr.io"
           ACR_USER=${{ env.ACR_NAME }}
           ACR_PASS=$(az acr credential show --name ${{ env.ACR_NAME }} --resource-group ${{ env.ACA_RG }} --query "passwords[0].value" -o tsv)
 
@@ -121,7 +122,7 @@ jobs:
             az containerapp registry set \
               --name ${{ env.ACA_APP }} \
               --resource-group ${{ env.ACA_RG }} \
-              --server ${{ env.IMAGE }} \
+              --server "$ACR_SERVER" \
               --username "$ACR_USER" \
               --password "$ACR_PASS"
 
@@ -140,7 +141,7 @@ jobs:
               --resource-group ${{ env.ACA_RG }} \
               --environment ${{ env.ACA_ENV }} \
               --image "$FULL_IMAGE" \
-              --registry-server ${{ env.IMAGE }} \
+              --registry-server "$ACR_SERVER" \
               --registry-username "$ACR_USER" \
               --registry-password "$ACR_PASS" \
               --ingress external \

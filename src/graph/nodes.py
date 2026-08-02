@@ -14,6 +14,7 @@ import structlog
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from src.graph.state import AgentState
+from src.core.tracing import traceable
 
 logger = structlog.get_logger(__name__)
 
@@ -64,6 +65,7 @@ Respond in this exact JSON format:
 """
 
 
+@traceable(name="node.supervisor", run_type="llm")
 def supervisor_node(state: AgentState) -> AgentState:
     """Classify the user's intent and set routing metadata."""
     import json
@@ -141,6 +143,7 @@ def _build_agent_node(
 ):
     """Factory that creates a domain-specific agent_node closure."""
 
+    @traceable(name="node.agent")
     def agent_node(state: AgentState) -> AgentState:
         from src.config import cfg
         from src.core.context_assembler import ContextAssembler
@@ -248,6 +251,7 @@ general_agent_node = _build_agent_node(
 
 
 # ── Escalation node ───────────────────────────────────────────────────────────
+@traceable(name="node.escalation")
 def escalation_node(state: AgentState) -> AgentState:
     """Handle escalation — acknowledge urgency and provide escalation path."""
     task = state.get("task", "")
@@ -269,6 +273,7 @@ def escalation_node(state: AgentState) -> AgentState:
 # ────────────────────────────────────────────────────────────────────────────
 
 
+@traceable(name="node.tool")
 def tool_node(state: AgentState) -> AgentState:
     """Execute tool calls from the last AI message and append results."""
     from src.tools.registry import get_tools_by_name
@@ -328,6 +333,7 @@ def tool_node(state: AgentState) -> AgentState:
 # ────────────────────────────────────────────────────────────────────────────
 
 
+@traceable(name="node.extract_final_answer", run_type="llm")
 def extract_final_answer_node(state: AgentState) -> AgentState:
     """Extract the final text answer from the last AI message."""
     messages = state.get("messages", [])

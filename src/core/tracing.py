@@ -140,3 +140,34 @@ def is_tracing_enabled() -> bool:
     reflects any changes made after ``setup_langsmith()`` was called.
     """
     return os.environ.get(_ENV_TRACING_V2, "false").lower() == "true"
+
+
+def traceable(
+    func=None,
+    *,
+    name: str | None = None,
+    run_type: str = "chain",
+    **kwargs,
+):
+    """
+    Decorator that wraps a function with a LangSmith trace span.
+    Falls back to a transparent no-op when tracing is disabled or LangSmith unavailable.
+
+    Usage::
+
+        @traceable(name="node.supervisor")
+        def supervisor_node(state): ...
+    """
+    def decorator(fn):
+        if not is_tracing_enabled():
+            return fn
+        try:
+            from langsmith import traceable as _ls_traceable  # type: ignore
+            span_name = name or fn.__qualname__
+            return _ls_traceable(name=span_name, run_type=run_type, **kwargs)(fn)
+        except Exception:
+            return fn
+
+    if func is not None:
+        return decorator(func)
+    return decorator
