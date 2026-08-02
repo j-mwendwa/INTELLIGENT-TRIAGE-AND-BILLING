@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -40,12 +40,23 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
     # API Security
-    allowed_api_keys: list[str] = Field(default=["dev-local-key"], alias="ALLOWED_API_KEYS")
+    allowed_api_keys_raw: str = Field(default="dev-local-key", alias="ALLOWED_API_KEYS")
+    cors_origins_raw: str = Field(default="", alias="CORS_ORIGINS")
+
+    @property
+    def allowed_api_keys(self) -> list[str]:
+        if isinstance(self.allowed_api_keys_raw, list):
+            return self.allowed_api_keys_raw
+        return [k.strip() for k in str(self.allowed_api_keys_raw).split(",") if k.strip()]
+
+    @property
+    def cors_origins(self) -> list[str]:
+        if isinstance(self.cors_origins_raw, list):
+            return self.cors_origins_raw
+        return [k.strip() for k in str(self.cors_origins_raw).split(",") if k.strip()]
 
     # Google Gemini
     google_api_key: str = Field(default="", alias="GOOGLE_API_KEY")
-
-    # Vector Store
     vector_backend: str = Field(default="chroma", alias="VECTOR_BACKEND")
     chroma_host: str = Field(default="localhost", alias="CHROMA_HOST")
     chroma_port: int = Field(default=8001, alias="CHROMA_PORT")
@@ -63,21 +74,9 @@ class Settings(BaseSettings):
     # MCP
     mcp_enabled: bool = Field(default=True, alias="MCP_ENABLED")
 
-    # CORS — comma-separated list of allowed origins for production.
-    # Example: https://my-app.azurecontainerapps.io,https://my-custom-domain.com
-    # In non-production environments ["*"] is used regardless of this value.
-    cors_origins: list[str] = Field(default=[], alias="CORS_ORIGINS")
-
     # MCP optional
     tavily_api_key: str = Field(default="", alias="TAVILY_API_KEY")
     database_uri: str = Field(default="", alias="DATABASE_URI")
-
-    @field_validator("allowed_api_keys", "cors_origins", mode="before")
-    @classmethod
-    def split_comma_list(cls, v: Any) -> list[str]:
-        if isinstance(v, str):
-            return [k.strip() for k in v.split(",") if k.strip()]
-        return v
 
     @model_validator(mode="after")
     def production_safety_check(self) -> Settings:
