@@ -184,8 +184,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          username: ${{ secrets.ACR_ADMIN_USERNAME }}
+          password: ${{ secrets.ACR_ADMIN_PASSWORD }}
 
       - name: Build and push image (multi-stage)
         uses: docker/build-push-action@v6
