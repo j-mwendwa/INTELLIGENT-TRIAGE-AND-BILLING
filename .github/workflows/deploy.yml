@@ -7,7 +7,7 @@
 #   3. security       — Trivy filesystem vulnerability scan
 #   4. build          — Docker build (multi-stage) & push to ACR
 #   5. deploy-staging — Azure Container Apps deploy to staging slot
-#   6. smoke-test     — Post-deploy /health + /docs liveness checks
+#   6. smoke-test     — Post-deploy /api/v1/health + /docs liveness checks
 #   7. deploy-prod    — Production deploy (semver tag trigger or manual dispatch)
 #
 # Required GitHub Secrets:
@@ -396,12 +396,12 @@ jobs:
           echo "STAGING_URL=https://$FQDN" >> "$GITHUB_ENV"
           echo "Resolved staging URL: https://$FQDN"
 
-      - name: Health check — /health (retry × 10)
+      - name: Health check — /api/v1/health (retry × 10)
         run: |
           STATUS="000"
           for i in 1 2 3 4 5 6 7 8 9 10; do
             STATUS=$(curl -s -o /tmp/health_body.txt -w "%{http_code}" \
-              "${STAGING_URL}/health" || true)
+              "${STAGING_URL}/api/v1/health" || true)
             echo "Attempt $i — HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "Health body: $(cat /tmp/health_body.txt)"
@@ -527,7 +527,7 @@ jobs:
           STATUS="000"
           for i in 1 2 3 4 5 6 7 8 9 10; do
             STATUS=$(curl -s -o /tmp/health_body.txt -w "%{http_code}" \
-              "${PROD_URL}/health")
+              "${PROD_URL}/api/v1/health")
             echo "Attempt $i — HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "Health body: $(cat /tmp/health_body.txt)"
