@@ -89,7 +89,7 @@ curl -X POST http://localhost:8000/api/v1/chat \
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| GET | `/health` | No | Liveness probe |
+| GET | `/api/v1/health` | No | Liveness probe |
 | GET | `/version` | No | Version info |
 | POST | `/api/v1/chat` | Yes | Synchronous chat |
 | POST | `/api/v1/chat/stream` | Yes | Streaming SSE chat |
