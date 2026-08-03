@@ -372,14 +372,36 @@ jobs:
     if: needs.deploy-staging.result == 'success'
 
     steps:
+      - name: Log in to Azure
+        uses: azure/login@v2
+        with:
+          creds: >-
+            {
+              "clientId":       "${{ secrets.ACR_USERNAME }}",
+              "clientSecret":   "${{ secrets.ACR_PASSWORD }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId":       "${{ secrets.AZURE_TENANT_ID }}"
+            }
+
+      - name: Resolve staging URL
+        run: |
+          FQDN=$(az containerapp show \
+            --name "${{ secrets.AZURE_CONTAINERAPP_STAGING }}" \
+            --resource-group "${{ env.ACA_RG }}" \
+            --query "properties.configuration.ingress.fqdn" -o tsv)
+          if [ -z "$FQDN" ]; then
+            echo "::error::Could not resolve staging FQDN from Azure Container Apps"
+            exit 1
+          fi
+          echo "STAGING_URL=https://$FQDN" >> "$GITHUB_ENV"
+          echo "Resolved staging URL: https://$FQDN"
+
       - name: Health check — /health (retry × 10)
-        env:
-          STAGING_URL: https://${{ needs.deploy-staging.outputs.api_fqdn }}
         run: |
           STATUS="000"
           for i in 1 2 3 4 5 6 7 8 9 10; do
             STATUS=$(curl -s -o /tmp/health_body.txt -w "%{http_code}" \
-              "${STAGING_URL}/health")
+              "${STAGING_URL}/health" || true)
             echo "Attempt $i — HTTP $STATUS"
             if [ "$STATUS" = "200" ]; then
               echo "Health body: $(cat /tmp/health_body.txt)"
@@ -394,8 +416,6 @@ jobs:
           fi
 
       - name: Docs reachable — /docs
-        env:
-          STAGING_URL: https://${{ needs.deploy-staging.outputs.api_fqdn }}
         run: |
           curl -sf "${STAGING_URL}/docs" \
             -o /dev/null -w "GET /docs → HTTP %{http_code}\n"
